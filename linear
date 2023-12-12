@@ -26,6 +26,7 @@ class Linear
     end
 
     def team_issues(team_uuid, state)
+      # TODO only fetch issues from the past 2 weeks
       result = graphql(<<~EOS)
         query Team {
           team(id: "#{team_uuid}") {
@@ -38,11 +39,19 @@ class Linear
                 title
                 labelIds
               }
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
             }
           }
-        }  
+        }
       EOS
       issues = result.dig("team","issues","nodes") || []
+      hasNextPage = result.dig("team","issues","pageInfo","hasNextPage")
+      if hasNextPage
+        raise "pagination required"
+      end
       issues.map { |item|
         Issue.new(item.fetch("id"), item.fetch("identifier"), item.fetch("title"), item.fetch("labelIds"))
       }
@@ -60,11 +69,19 @@ class Linear
                 description
                 isGroup
               }
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
             }
           }
-        }  
+        }
       EOS
       labels = result.dig("team","labels","nodes") || []
+      hasNextPage = result.dig("team","labels","pageInfo","hasNextPage")
+      if hasNextPage
+        raise "pagination required"
+      end
       labels.map { |item|
         Label.new(item.fetch("id"), item.fetch("name"), item.fetch("color"), item.fetch("description"), item.fetch("isGroup"))
       }
@@ -78,10 +95,18 @@ class Linear
             id
             name
           }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
         }
       }
       EOS
       teams = result.dig("teams","nodes") || []
+      hasNextPage = result.dig("teams","pageInfo","hasNextPage")
+      if hasNextPage
+        raise "pagination required"
+      end
       teams.map { |item|
         Team.new(item.fetch("id"), item.fetch("name"))
       }
