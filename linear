@@ -1,0 +1,133 @@
+#!/usr/bin/env ruby
+
+require 'json'
+require 'net/http'
+require 'pry'
+
+USAGE = <<~EOS
+LINEAR_API_KEY=xxx linear teams"
+LINEAR_API_KEY=xxx linear team-labels <team-uuid>"
+LINEAR_API_KEY=xxx linear label-started-issues <team-uuid>"
+EOS
+
+def die(msg = USAGE)
+  $stderr.puts msg
+  exit 1
+end
+
+class Linear
+  Team = Data.define(:uuid, :name)
+  Label = Data.define(:uuid, :name, :color, :description, :isGroup)
+  Issue = Data.define(:uuid, :identifier, :title, :labelids)
+
+  class Client
+    def initialize(api_key)
+      @api_key = api_key
+    end
+
+    def team_issues(team_uuid, state)
+      result = graphql(<<~EOS)
+        query Team {
+          team(id: "#{team_uuid}") {
+            issues(filter: {
+              state: { type: { eq: "#{state}" } }
+            }) {
+              nodes {
+                id
+                identifier
+                title
+                labelIds
+              }
+            }
+          }
+        }  
+      EOS
+      issues = result.dig("team","issues","nodes") || []
+      issues.map { |item|
+        Issue.new(item.fetch("id"), item.fetch("identifier"), item.fetch("title"), item.fetch("labelIds"))
+      }
+    end
+
+    def team_labels(team_uuid)
+      result = graphql(<<~EOS)
+        query Team {
+          team(id: "#{team_uuid}") {
+            labels {
+              nodes {
+                id
+                name
+                color
+                description
+                isGroup
+              }
+            }
+          }
+        }  
+      EOS
+      labels = result.dig("team","labels","nodes") || []
+      labels.map { |item|
+        Label.new(item.fetch("id"), item.fetch("name"), item.fetch("color"), item.fetch("description"), item.fetch("isGroup"))
+      }
+    end
+
+    def teams
+      result = graphql(<<~EOS)
+      query Teams {
+        teams {
+          nodes {
+            id
+            name
+          }
+        }
+      }
+      EOS
+      teams = result.dig("teams","nodes") || []
+      teams.map { |item|
+        Team.new(item.fetch("id"), item.fetch("name"))
+      }
+    end
+
+    private
+
+    def graphql(query)
+      request = Net::HTTP::Post.new("/graphql")
+      request["User-Agent"] = "github.com/yob/linearcli"
+      request["Authorization"] = @api_key
+      request["Content-Type"] = "application/json"
+      request.body = JSON.dump(query: query)
+      Net::HTTP.start("api.linear.app", 443, :use_ssl => true) do |http|
+        response = http.request(request)
+        if response.code.to_i == 200
+          body = JSON.parse(response.body)
+          if body.key?("data")
+            return body.fetch("data")
+          end
+        end
+      end
+
+    end
+  end
+end
+
+api_key = ENV.fetch("LINEAR_API_KEY", nil)
+
+unless api_key
+  die(USAGE)
+end
+
+client = Linear::Client.new(api_key)
+
+case ARGV.first
+when "teams" then
+  puts client.teams
+when "team-labels" then
+  uuid = ARGV[1]
+  die(USAGE) if uuid.nil?
+  puts client.team_labels(uuid)
+when "label-started-issues" then
+  uuid = ARGV[1]
+  die(USAGE) if uuid.nil?
+  puts client.team_issues(uuid, "started") # completed also valid
+else
+  die(USAGE)
+end
