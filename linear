@@ -122,9 +122,18 @@ class Linear
       request.body = JSON.dump(query: query)
       Net::HTTP.start("api.linear.app", 443, :use_ssl => true) do |http|
         response = http.request(request)
-        if response.code.to_i == 200
+        if response.code.to_i == 400
           body = JSON.parse(response.body)
-          if body.key?("data")
+          if body.key?("errors")
+            raise body.fetch("errors").inspect
+          else
+            raise "unknown 400 error"
+          end
+        elsif response.code.to_i == 200
+          body = JSON.parse(response.body)
+          if body.key?("errors")
+            raise body.fetch("errors").inspect
+          else
             return body.fetch("data")
           end
         end
