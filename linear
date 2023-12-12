@@ -128,6 +128,7 @@ when "label-started-issues" then
   uuid = ARGV[1]
   die(USAGE) if uuid.nil?
   puts client.team_issues(uuid, "started") # completed also valid
+  # TODO loop over each issue and prompt for missing issues, then use issueAddLabel() mutation
 else
   die(USAGE)
 end
