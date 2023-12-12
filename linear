@@ -91,7 +91,7 @@ class Linear
 
     def graphql(query)
       request = Net::HTTP::Post.new("/graphql")
-      request["User-Agent"] = "github.com/yob/linearcli"
+      request["User-Agent"] = "github.com/yob/linearcli (ruby #{RUBY_DESCRIPTION})"
       request["Authorization"] = @api_key
       request["Content-Type"] = "application/json"
       request.body = JSON.dump(query: query)
