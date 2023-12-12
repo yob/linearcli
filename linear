@@ -84,7 +84,7 @@ class Linear
       end
       labels.map { |item|
         Label.new(item.fetch("id"), item.fetch("name"), item.fetch("color"), item.fetch("description"), item.fetch("isGroup"))
-      }
+      }.sort_by(&:name)
     end
 
     def teams
