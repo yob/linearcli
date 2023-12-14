@@ -18,11 +18,32 @@ end
 class Linear
   Team = Data.define(:uuid, :name)
   Label = Data.define(:uuid, :name, :color, :description, :isGroup)
-  Issue = Data.define(:uuid, :identifier, :title, :labelids)
+  Issue = Data.define(:uuid, :identifier, :title, :labelids) do
+    def select_existing_label(labels)
+      labels.detect { |label|
+        labelids.include?(label.uuid)
+      }
+    end
+  end
 
   class Client
     def initialize(api_key)
       @api_key = api_key
+    end
+
+    def add_label_to_issue(issue, label)
+      result = graphql(<<~EOS)
+        mutation addlabel {
+          issueAddLabel(id: "#{issue.uuid}", labelId: "#{label.uuid}") {
+            issue {
+              id
+              identifier
+              title
+              labelIds
+            }
+          }
+        }
+      EOS
     end
 
     def team_issues(team_uuid, state)
@@ -161,7 +182,51 @@ when "team-labels" then
 when "label-started-issues" then
   uuid = ARGV[1]
   die(USAGE) if uuid.nil?
-  puts client.team_issues(uuid, "started") # completed also valid
+
+  labels = client.team_labels(uuid)
+  groups = {}
+  labels.select { |label|
+    label.isGroup
+  }.each { |group|
+    groups[group] = []
+    labels.each { |nested|
+      if nested.name.start_with?("#{group.name}:")
+        groups[group] << nested
+      end
+    }
+  }
+  puts
+  puts
+  puts
+  puts
+  issues = client.team_issues(uuid, "started") # completed also valid
+  issues.each do |issue|
+    puts
+    puts
+    puts "################################################################"
+    puts "#{issue.identifier} #{issue.title}"
+    puts "################################################################"
+    groups.each do |group, labels|
+      if existing = issue.select_existing_label(labels)
+        puts existing.name
+      else
+        indexed_labels = {}
+        labels.each_with_index { |label, i| indexed_labels[i+1] = label }
+        question = "#{group.name}:\n" + indexed_labels.map { |i, label| "- (#{i}) #{label.name.gsub(/^#{group.name}: /,"")}"}.join("\n")
+        puts question
+        puts "Choose:"
+        answer = $stdin.gets
+        answer = answer.to_i
+        if indexed_labels.key?(answer)
+          # set label
+          puts "you chose #{answer}"
+          client.add_label_to_issue(issue, indexed_labels[answer])
+        else
+          puts "invalid answer (#{answer}), skipping"
+        end
+      end
+    end
+  end
   # TODO loop over each issue and prompt for missing issues, then use issueAddLabel() mutation
 else
   die(USAGE)
